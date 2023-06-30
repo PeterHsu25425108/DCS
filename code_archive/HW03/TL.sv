@@ -1,0 +1,1104 @@
+// master state assignment
+parameter MAIN_S = 3'b000,
+          SIDE_S = 3'b001,
+          MAIN_LT = 3'b010,
+          SIDE_LT = 3'b011,
+          DEFAULT = 3'b100,
+          IDLE = 3'b101;
+
+// light state assignment
+parameter RED = 2'b00,
+          YELLOW = 2'b01,
+          GREEN = 2'b10,
+          LEFT = 2'b11;
+
+parameter LTIMERSIZE = 4;
+
+module Timer #(parameter TIMERWIDTH = 4)(
+  // Input signals
+  clk, rst_n, tload, time_val,
+  // Output signals
+  tdone
+);
+
+input logic clk, rst_n, tload;
+input logic [TIMERWIDTH-1 : 0] time_val;
+output logic tdone;
+
+logic [TIMERWIDTH-1 : 0] timer_buffer, next_time;
+logic buffer_zero;
+
+always @(posedge clk or negedge rst_n) begin : timer_seq
+  if(!rst_n) begin
+    timer_buffer <= 0;
+  end
+  else begin
+    timer_buffer <= next_time;
+  end
+end
+
+always_comb begin : timer_comb
+  buffer_zero = !(|timer_buffer);
+  tdone = buffer_zero;
+
+  if(tload) begin
+    next_time = time_val;
+  end
+  else begin
+    next_time = (buffer_zero) ? timer_buffer : timer_buffer -1;
+  end
+end
+
+endmodule
+
+//(.clk(clk), .rst_n(rst_n), /*.stay_green(stay_green),*/ .master_state(master_state), .ldone(ldone), .lfsm_done(lfsm_done), .ltload(ltload), .ltval(ltval), .light_state(light_state))
+
+module light_FSM(
+  // Input signals
+  clk,
+  rst_n,
+  master_state,
+  ldone,
+  mains_nz,
+  mainlt_nz,
+  sides_nz,
+  sidelt_nz,
+  red_tval,
+  // Output signals
+  lfsm_done,
+  ltload,
+  ltval,
+  light_state
+  
+);
+
+input logic clk, rst_n, ldone;
+input logic [2:0] master_state;
+input logic [LTIMERSIZE-1 : 0] red_tval;
+input logic mains_nz, mainlt_nz, sides_nz, sidelt_nz;
+
+output logic lfsm_done, ltload;
+output logic [LTIMERSIZE-1 : 0] ltval;
+output logic [1:0] light_state;
+
+logic [1:0] curr_light_state;
+logic [1:0]next_light_state;
+
+always @(posedge clk or negedge rst_n) begin : light_seq
+  if(!rst_n) begin
+    curr_light_state <= GREEN;
+  end
+  else begin
+    curr_light_state <= next_light_state; 
+  end
+end
+
+always_comb begin : output_light_state
+  light_state = curr_light_state;
+end
+
+always_comb begin : lfsmdone_comb
+  lfsm_done = ldone;
+end
+
+always_comb begin : ltval_comb
+  /*ltval = {LTIMERSIZE{1'bx}};
+  casez (master_state)
+    // yellow tval
+
+    MAIN_S: begin
+      casez(light_state)
+        GREEN: begin
+          ltval = 0;
+        end
+
+        // red val, depending on the next state is side or main
+        YELLOW: begin
+          if(mainlt_nz) begin
+            ltval = 1;
+          end
+          else if(sides_nz || sidelt_nz) begin
+            ltval = 0;
+          end
+          else begin
+            ltval = 1;
+          end
+        end
+
+        // tval need to be calculated
+        // nominal - 1
+
+        RED: begin
+          ltval = red_tval;
+        end
+      endcase
+    end
+
+    MAIN_LT: begin
+      casez(light_state)
+        LEFT: begin
+          ltval = 0;
+        end
+
+        // red val, depending on the next state is side or main
+        YELLOW: begin
+
+          if(sidelt_nz || sides_nz) begin
+            ltval = 0;
+          end
+          else begin
+            ltval = 1;
+          end
+        end
+
+        // tval need to be calculated
+        // nominal - 1
+        RED: begin
+          ltval = red_tval;
+        end
+      endcase
+    end
+
+    SIDE_S:begin
+      casez(light_state)
+        GREEN: begin
+          ltval = 0;
+        end
+
+        // red val, depending on the next state is side or main
+        YELLOW: begin
+          ltval = 1;
+        end
+
+        // tval need to be calculated
+        // nominal - 1
+        RED: begin
+          ltval = red_tval;
+        end
+      endcase
+    end
+
+    SIDE_LT: begin
+      casez(light_state)
+        LEFT: begin
+          ltval = 0;
+        end
+
+        YELLOW: begin
+          ltval = 1;
+        end
+      endcase
+    end
+
+    // tval need to be calculated
+    // nominal
+    IDLE:begin
+      ltval = red_tval;
+    end
+
+  endcase*/
+
+  //ltval = {LTIMERSIZE{1'bx}};
+  casez ({master_state,light_state})
+    // yellow tval
+    {MAIN_S,GREEN}: begin
+      ltval = 0;
+    end
+
+    // red val, depending on the next state is side or main
+    {MAIN_S,YELLOW}: begin
+      if(mainlt_nz) begin
+        ltval = 1;
+      end
+      else if(sides_nz || sidelt_nz) begin
+        ltval = 0;
+      end
+      else begin
+        ltval = 1;
+      end
+    end
+
+    // tval need to be calculated
+    // nominal - 1
+
+    {MAIN_S,RED}: begin
+      ltval = red_tval;
+    end
+
+    {MAIN_LT,LEFT}: begin
+      ltval = 0;
+    end
+
+    // red val, depending on the next state is side or main
+    {MAIN_LT, YELLOW}: begin
+
+      if(sidelt_nz || sides_nz) begin
+        ltval = 0;
+      end
+      else begin
+        ltval = 1;
+      end
+    end
+
+    // tval need to be calculated
+    // nominal - 1
+    {MAIN_LT, RED}: begin
+      ltval = red_tval;
+    end
+
+    {SIDE_S, GREEN}: begin
+      ltval = 0;
+    end
+
+    // red val, depending on the next state is side or main
+    {SIDE_S, YELLOW}: begin
+      ltval = 1;
+    end
+
+    // tval need to be calculated
+    // nominal - 1
+    {SIDE_S, RED}: begin
+      ltval = red_tval;
+    end
+
+
+    {SIDE_LT, LEFT}: begin
+      ltval = 0;
+    end
+
+    {SIDE_LT, YELLOW}: begin
+      ltval = 1;
+    end
+
+    // tval need to be calculated
+    // nominal
+    {IDLE,2'b??}:begin
+      ltval = red_tval;
+    end
+
+    default:begin
+      ltval = {LTIMERSIZE{1'bx}};
+    end
+  endcase
+
+end
+
+always_comb begin : ltload_comb
+  
+  casez (master_state)
+    MAIN_S: begin
+      casez(light_state)
+        RED: begin
+          ltload = ldone;
+        end
+
+        YELLOW: begin
+          ltload = 1;
+        end
+
+        GREEN: begin
+          ltload = ldone;
+        end
+        default:
+          ltload = 1'b0;
+      endcase
+    end
+
+    MAIN_LT: begin
+        casez(light_state)
+        RED: begin
+          ltload = ldone;
+        end
+
+        YELLOW: begin
+          ltload = 1;
+        end
+
+        LEFT: begin
+          ltload = ldone;
+        end
+        default:
+          ltload = 1'b0;
+      endcase
+    end
+
+    SIDE_S:begin
+      casez(light_state)
+        RED: begin
+          ltload = ldone;
+        end
+
+        YELLOW: begin
+          ltload = 1;
+        end
+
+        GREEN: begin
+          ltload = ldone;
+        end
+        default:
+          ltload = 1'b0;
+      endcase
+    end
+
+    SIDE_LT: begin
+      casez(light_state)
+        RED: begin
+          ltload = ldone;
+        end
+
+        YELLOW: begin
+          ltload = 1;
+        end
+
+        LEFT: begin
+          ltload = ldone;
+        end
+        default:
+          ltload = 1'b0;
+      endcase
+    end
+
+    IDLE: begin
+      ltload = mains_nz || mainlt_nz || sides_nz || sidelt_nz;
+    end
+    default:
+      ltload = 1'b0;
+  endcase
+
+  /*if(master_state == IDLE) begin
+    ltload = mains_nz || mainlt_nz || sides_nz || sidelt_nz;
+  end
+  else begin
+    casez(light_state)
+      RED: begin
+        ltload = ldone;
+      end
+
+      YELLOW: begin
+        ltload = 1;
+      end
+
+      GREEN: begin
+        ltload = ldone;
+      end
+      default:
+        ltload = 1'b0;
+    endcase
+  end*/
+end
+
+always_comb begin : next_light_state_comb
+  //next_light_state = 2'bx;
+  casez (master_state)
+    MAIN_S: begin
+      casez(light_state)
+        RED: begin
+          if(ldone) begin
+            casez({mainlt_nz, sides_nz, sidelt_nz})
+              3'b1??: begin
+                //next_state = MAIN_LT;
+                next_light_state = LEFT;
+              end
+
+              3'b01?: begin
+                //next_state = SIDE_S;
+                next_light_state = GREEN;
+              end
+
+              3'b001: begin
+                //next_state = SIDE_LT;
+                next_light_state = LEFT;
+              end
+              default: next_light_state = 2'bx;
+            endcase
+            /*if(mainlt_nz) next_light_state = LEFT;
+            else if(sides_nz) next_light_state = GREEN;
+            else next_light_state = LEFT;*/
+          end
+          else begin
+            next_light_state = RED;
+          end
+        end
+
+        GREEN: begin
+          next_light_state = (ldone) ? YELLOW : /*light_state*/GREEN;
+        end
+
+        YELLOW: begin
+          next_light_state = RED;
+        end
+
+        default: next_light_state = 2'bx;
+      endcase
+    end
+
+    MAIN_LT: begin
+      casez(light_state)
+        RED: begin
+          if(ldone) begin
+            casez({sides_nz, sidelt_nz})
+              2'b1?: begin
+                //next_state = SIDE_S;
+                next_light_state = GREEN;
+              end
+
+              2'b01: begin
+                //next_state = SIDE_LT;
+                next_light_state = LEFT;
+              end
+              default: next_light_state = 2'bx;
+            endcase
+          end
+          else begin
+            next_light_state = RED;
+          end
+        end
+
+        /*GREEN: begin
+          next_light_state = (ldone) ? YELLOW : light_state;
+        end*/
+
+        YELLOW: begin
+          next_light_state = RED/*(ldone) ? RED : light_state*/;
+        end
+
+        LEFT: begin
+          next_light_state = (ldone) ? YELLOW : /*light_state*/LEFT;
+        end
+
+        default: next_light_state = 2'bx;
+      endcase
+    end
+
+    SIDE_S: begin
+      casez(light_state)
+        RED: begin
+          if(ldone) begin
+            casez({sidelt_nz})
+              1: begin
+                //next_state = SIDE_LT;
+                next_light_state = LEFT;
+              end
+              default: next_light_state = 2'bx;
+            endcase
+          end
+          else begin
+            next_light_state = RED;
+          end
+        end
+
+        GREEN: begin
+          next_light_state = (ldone) ? YELLOW : /*light_state*/GREEN;
+        end
+
+        YELLOW: begin
+          next_light_state = RED/*(ldone) ? RED : light_state*/;
+        end
+
+        default: next_light_state = 2'bx;
+      endcase
+    end
+
+    SIDE_LT: begin
+      casez(light_state)
+        RED: begin
+          next_light_state = RED;
+        end
+
+        /*GREEN: begin
+          next_light_state = (ldone) ? YELLOW : light_state;
+        end*/
+
+        YELLOW: begin
+          next_light_state = RED/*(ldone) ? RED : light_state*/;
+        end
+
+        LEFT: begin
+          casez(light_state)
+            RED:begin
+              next_light_state = (ldone) ? GREEN : /*light_state*/RED;
+            end
+
+            LEFT: begin
+              next_light_state = (ldone) ? YELLOW : /*light_state*/LEFT;
+            end
+
+            YELLOW: begin
+              next_light_state = (ldone) ? RED : /*light_state*/YELLOW;
+            end
+
+            default: next_light_state = 2'bx;
+          endcase
+        end
+
+        default: next_light_state = 2'bx;
+      endcase
+    end
+
+    IDLE: begin
+        next_light_state = GREEN;
+    end
+
+    default: next_light_state = 2'bx;
+  endcase
+end
+
+
+
+endmodule
+
+module master_FSM(
+  // Input signals
+  clk, 
+  rst_n, 
+  mains_nz,
+  mainlt_nz,
+  sides_nz,
+  sidelt_nz,
+  change_dir_ok,
+  // Output signals
+  master_state
+);
+
+input logic clk, rst_n, change_dir_ok;
+input logic mains_nz, mainlt_nz, sides_nz, sidelt_nz;
+output logic  [2:0] master_state;
+
+logic  [2:0] curr_master_state;
+logic  [2:0] next_state;
+
+always_comb begin : output_master_state
+  master_state = curr_master_state;
+end
+
+always @(posedge clk or negedge rst_n) begin : master_seq
+  if(!rst_n) begin
+    curr_master_state <= IDLE;
+  end
+  else begin
+    curr_master_state <= next_state;
+  end
+end
+
+always_comb begin : next_state_comb
+
+  next_state = 3'bx;
+  if(change_dir_ok) begin
+    case(curr_master_state)
+
+      MAIN_S: begin
+        //next_state = 3'bx;
+        /*casez({mainlt_nz, sides_nz, sidelt_nz})
+          3'b1??: begin
+            next_state = MAIN_LT;
+          end
+
+          3'b01?: begin
+            next_state = SIDE_S;
+          end
+
+          3'b001: begin
+            next_state = SIDE_LT;
+          end
+
+          default: begin
+            next_state = DEFAULT;
+          end
+        endcase*/
+        if(mainlt_nz) begin
+          next_state = MAIN_LT;
+        end
+        else if(sides_nz) begin
+          next_state = SIDE_S;
+        end
+        else if(sidelt_nz) begin
+          next_state = SIDE_LT;
+        end
+        else begin
+          next_state = DEFAULT;
+        end
+      end
+
+      MAIN_LT: begin
+        //next_state = 3'bx;
+        /*casez({sides_nz, sidelt_nz})
+          2'b1?: begin
+            next_state = SIDE_S;
+          end
+
+          2'b01: begin
+            next_state = SIDE_LT;
+          end
+
+          2'b00: begin
+            next_state = DEFAULT;
+          end
+        endcase*/
+        if(sides_nz)begin
+          next_state = SIDE_S;
+        end
+        else if(sidelt_nz)begin
+          next_state = SIDE_LT;
+        end
+        else begin
+          next_state = DEFAULT;
+        end
+      end
+
+      SIDE_S: begin
+        //next_state = 3'bx;
+        /*casez({sidelt_nz})
+          1: begin
+            next_state = SIDE_LT;
+          end
+          0: begin 
+            next_state = DEFAULT;
+          end
+        endcase*/
+        if(sidelt_nz) begin
+          next_state = SIDE_LT;
+        end
+        else begin
+          next_state = DEFAULT;
+        end
+      end
+
+      SIDE_LT: begin
+        next_state = DEFAULT;
+      end
+
+      IDLE: begin
+
+        if(mains_nz || mainlt_nz || sides_nz || sidelt_nz) begin
+          next_state = MAIN_S;
+        end
+        else begin
+          next_state = DEFAULT;
+        end
+      end
+
+      DEFAULT: begin
+        next_state = IDLE;
+      end
+    endcase
+  end
+  else begin
+    next_state = curr_master_state;
+  end
+end
+
+endmodule
+
+module TL(
+  // Input signals
+  clk,
+  rst_n,
+  in_valid,
+  car_main_s,
+  car_main_lt,
+  car_side_s,
+  car_side_lt,
+  // Output signals
+  out_valid,
+  light_main,
+  light_side
+);
+
+//---------------------------------------------------------------------
+//   PORT DECLARATION
+//---------------------------------------------------------------------
+input logic clk, rst_n, in_valid;
+input logic [2:0] car_main_s, car_main_lt, car_side_s, car_side_lt; 
+output logic out_valid;
+output logic [1:0]light_main, light_side;
+
+logic [LTIMERSIZE-1 : 0] /*red_tval_mainlt,*/ red_tval_sides, red_tval_sidelt;
+/* ------------------ sequential terms ----------------------------------*/
+logic [1:0] sidelt_comp, next_sidelt_comp, mainlt_comp, next_mainlt_comp, sides_comp, next_sides_comp;
+logic mains_comp, next_mains_comp;
+logic mains_nz, mainlt_nz, sides_nz, sidelt_nz, next_mains_nz, next_mainlt_nz, next_sides_nz, next_sidelt_nz;
+logic in_valid_buffer;
+/* ----------------------------------------------------------------------*/
+
+
+
+// ----- master_FSM ports -----
+logic [2:0] master_state;
+logic change_dir_ok;
+
+// ----- light_FSM ports -----
+logic /*stay_green, */lfsm_done, ltload, ldone;
+logic [1:0] light_state;
+logic [LTIMERSIZE-1 : 0] ltval;
+logic isRED;
+logic [LTIMERSIZE-1 : 0] red_tval;
+
+master_FSM master_fsm(.clk(clk), .rst_n(rst_n), .mains_nz(mains_nz), .sides_nz(sides_nz), .mainlt_nz(mainlt_nz), .sidelt_nz(sidelt_nz), .master_state(master_state), .change_dir_ok(change_dir_ok));
+
+light_FSM light_fsm(.clk(clk), .rst_n(rst_n), .mains_nz(mains_nz), .sides_nz(sides_nz), .mainlt_nz(mainlt_nz), .sidelt_nz(sidelt_nz), .master_state(master_state), .ldone(ldone), .lfsm_done(lfsm_done), .ltload(ltload), .ltval(ltval), .light_state(light_state), .red_tval(red_tval));
+
+Timer #(.TIMERWIDTH(LTIMERSIZE)) L_Timer (.clk(clk), .rst_n(rst_n), .tload(ltload), .time_val(ltval), .tdone(ldone));
+
+always @(posedge clk or negedge rst_n) begin : master_seq
+  if(!rst_n) begin
+    in_valid_buffer <= 0;
+    mains_comp <= 0;
+    mainlt_comp <= 0;
+    sides_comp <= 0;
+    sidelt_comp <= 0;
+
+    mains_nz <= 0;
+    mainlt_nz <= 0;
+    sides_nz <= 0;
+    sidelt_nz <= 0;
+  end
+  else begin
+    in_valid_buffer <= in_valid;
+    mains_comp <= next_mains_comp;
+    mainlt_comp <= next_mainlt_comp;
+    sides_comp <= next_sides_comp;
+    sidelt_comp <= next_sidelt_comp;
+
+    mains_nz <= next_mains_nz;
+    mainlt_nz <= next_mainlt_nz;
+    sides_nz <= next_sides_nz;
+    sidelt_nz <= next_sidelt_nz;
+  end
+end
+
+always_comb begin : next_comp_comb
+  if(in_valid) begin
+    // within 3, within 6
+
+    //next_sides_comp = {!car_side_s[2], !(&car_side_s)};
+    //next_mainlt_comp = {!car_main_lt[2], !(&car_main_lt)};
+    casez(car_side_s)
+      0,1,2,3:
+        next_sides_comp = 2'b11;
+      4,5,6:
+        next_sides_comp = 2'b01;
+      7:
+        next_sides_comp = 2'b00;
+      default:
+        next_sides_comp = 2'bx;
+    endcase
+
+    casez(car_main_lt)
+      0,1,2,3:
+        next_mainlt_comp = 2'b11;
+      4,5,6:
+        next_mainlt_comp = 2'b01;
+      7:
+        next_mainlt_comp = 2'b00;
+      default:
+        next_mainlt_comp = 2'bx;
+    endcase
+
+
+    casez(car_side_lt)
+      0,1,2:
+        next_sidelt_comp = 2'b00;
+      3,4:
+        next_sidelt_comp = 2'b01;
+      5,6:
+        next_sidelt_comp = 2'b10;
+      default:
+        next_sidelt_comp = 2'b11;
+    endcase
+
+
+    casez(car_main_s)
+      0,1,2,3,4:
+        next_mains_comp = 0;
+      default:
+        next_mains_comp = 1;
+    endcase
+    //next_mains_comp = (car_main_s > 4);
+
+  end
+  else begin
+    next_mains_comp = mains_comp;
+    next_mainlt_comp = mainlt_comp;
+    next_sides_comp = sides_comp;
+    next_sidelt_comp = sidelt_comp;
+
+  end
+end
+
+always_comb begin : next_nz_comb
+  next_mains_nz = (in_valid) ? |car_main_s : mains_nz;
+  next_mainlt_nz = (in_valid) ? |car_main_lt : mainlt_nz;
+  next_sides_nz = (in_valid) ? |car_side_s : sides_nz; 
+  next_sidelt_nz = (in_valid) ? |car_side_lt : sidelt_nz;
+end
+
+always_comb begin : red_tval_cal
+  /*casez(mainlt_comp)
+    2'b1?:begin
+      red_tval_mainlt = 2;
+    end
+
+    2'b01:begin
+      red_tval_mainlt = 5;
+    end
+
+    2'b00: begin
+      red_tval_mainlt = 8;
+    end
+
+    default: begin
+      red_tval_mainlt = 1'bx;
+    end
+  endcase*/
+
+  casez(sides_comp)
+    2'b1?:begin
+      red_tval_sides = 2;
+    end
+
+    2'b01:begin
+      red_tval_sides = 5;
+    end
+
+    2'b00: begin
+      red_tval_sides = 8;
+    end
+
+    default: begin
+      red_tval_sides = 1'bx;
+    end
+  endcase  
+
+  casez(sidelt_comp)
+    2'b00:begin
+      red_tval_sidelt = 1;
+    end
+
+    2'b01:begin
+      red_tval_sidelt = 3;
+    end
+
+    2'b10:begin
+      red_tval_sidelt = 5;
+    end
+
+    2'b11:begin
+      red_tval_sidelt = 7;
+    end
+
+    default: begin
+      red_tval_sidelt = 1'bx;
+    end
+  endcase  
+end
+
+always_comb begin : red_tval_comb
+  red_tval = {LTIMERSIZE{1'bx}};
+
+  casez ({master_state})
+
+    MAIN_S: begin
+      casez({mainlt_nz, sides_nz, sidelt_nz})
+        3'b1??: begin
+          //next_state = MAIN_LT;
+
+          casez(mainlt_comp)
+            2'b1?:begin
+              red_tval = 2;
+            end
+
+            2'b01:begin
+              red_tval = 5;
+            end
+
+            default: begin
+              red_tval = 8;
+            end
+          endcase
+          //red_tval = red_tval_mainlt;
+        end
+
+        3'b01?: begin
+          //next_state = SIDE_S;
+          
+          /*casez(sides_comp)
+            2'b1?:begin
+              red_tval = 2;
+            end
+
+            2'b01:begin
+              red_tval = 5;
+            end
+
+            default: begin
+              red_tval = 8;
+            end
+          endcase*/
+          red_tval = red_tval_sides;
+        end
+
+        3'b001: begin
+          //next_state = SIDE_LT;
+
+          /*casez(sidelt_comp)
+            2'b00:begin
+              red_tval = 1;
+            end
+
+            2'b01:begin
+              red_tval = 3;
+            end
+
+            2'b10:begin
+              red_tval = 5;
+            end
+
+            default:begin
+              red_tval = 7;
+            end
+          endcase*/
+          red_tval = red_tval_sidelt;
+        end
+      endcase
+    end
+
+    MAIN_LT: begin
+      casez({sides_nz, sidelt_nz})
+        2'b1?: begin
+          //next_state = SIDE_S;
+          /*casez(sides_comp)
+            2'b1?:begin
+              red_tval = 2;
+            end
+
+            2'b01:begin
+              red_tval = 5;
+            end
+
+            default: begin
+              red_tval = 8;
+            end
+          endcase*/
+          red_tval = red_tval_sides;
+        end
+
+        2'b01: begin
+          //next_state = SIDE_LT;
+          /*casez(sidelt_comp)
+            2'b00:begin
+              red_tval = 1;
+            end
+
+            2'b01:begin
+              red_tval = 3;
+            end
+
+            2'b10:begin
+              red_tval = 5;
+            end
+
+            default:begin
+              red_tval = 7;
+            end
+          endcase*/
+          red_tval = red_tval_sidelt;
+        end
+      endcase
+    end
+
+    SIDE_S: begin
+      /*casez({sidelt_nz})
+        1: begin
+          //next_state = SIDE_LT;
+          casez(sidelt_comp)
+            2'b00:begin
+              red_tval = 1;
+            end
+
+            2'b01:begin
+              red_tval = 3;
+            end
+
+            2'b10:begin
+              red_tval = 5;
+            end
+
+            default:begin
+              red_tval = 7;
+            end
+          endcase
+          //red_tval = red_tval_sidelt;
+        
+        end
+      endcase*/
+      red_tval = red_tval_sidelt;
+    end
+
+    // next state is always main_s
+    IDLE: begin
+      // mains_buffer > 4
+      if(mains_comp) begin
+        red_tval = 7;
+      end
+      else begin
+        red_tval = 3;
+      end
+    end
+  endcase
+end
+
+logic change_dir_out;
+assign change_dir_out = isRED && lfsm_done;
+
+always_comb begin : TL_comb
+  out_valid = 1'bx;
+  light_main = 2'bx;
+  light_side = 2'bx;
+  change_dir_ok = 1'bx;
+
+  isRED = (light_state == RED);
+
+  casez (master_state)
+    MAIN_S: begin
+      out_valid = 1;
+      light_main = light_state;
+      light_side = 0;
+      if(mainlt_nz || sides_nz || sidelt_nz) begin
+        change_dir_ok = change_dir_out;
+      end
+      else begin
+        change_dir_ok = lfsm_done;
+      end
+    end
+
+    MAIN_LT: begin
+      out_valid = 1;
+      light_main = light_state;
+      light_side = 0;
+      change_dir_ok = change_dir_out;
+    end
+
+    SIDE_S, SIDE_LT: begin
+      out_valid = 1;
+      light_main = 0;
+      light_side = light_state;
+      change_dir_ok = change_dir_out;
+    end
+
+    DEFAULT: begin
+      out_valid = 1;
+      light_main = 2;
+      light_side = 0;
+      change_dir_ok = 1;
+    end
+
+    IDLE: begin
+      out_valid = 0;
+      light_main = 2;
+      light_side = 0;
+      change_dir_ok = in_valid_buffer;
+    end
+  endcase
+end
+
+endmodule
