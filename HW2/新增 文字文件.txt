@@ -1,0 +1,160 @@
+module I2S(
+  // Input signals
+  clk,
+  rst_n,
+  in_valid,
+  SD,
+  WS,
+  // Output signals
+  out_valid,
+  out_left,
+  out_right
+);
+
+//---------------------------------------------------------------------
+//   PORT DECLARATION
+//---------------------------------------------------------------------
+input clk, rst_n, in_valid;
+input SD, WS;
+
+output logic out_valid;
+output logic [31:0] out_left, out_right;
+
+logic [32:0] input_buffer;
+logic [31:0] next_val;
+logic [3:0] next, state;
+
+// store SD when state== L_OUT/R_OUT and in_valid == 1
+logic SD_buffer;
+logic next_SD_buffer;
+
+parameter IDLE = 3'b000,
+          L_READ = 3'b001,
+          R_READ = 3'b010,
+          L_OUT = 3'b011,
+          R_OUT = 3'b100;
+          //CLR = 3'b101;
+
+always_comb begin : comb_block
+  next_SD_buffer = SD;
+
+  casez({state, {in_valid, WS}})
+    {IDLE, 2'b0?} : begin
+      out_valid = 0;
+      out_left = 0;
+      out_right = 0;
+      next = IDLE;
+      next_val = 0;
+    end
+    {IDLE, 2'b11} : begin
+      out_valid = 0;
+      out_left = 0;
+      out_right = 0;
+      next_val = {input_buffer[30:0], SD};
+      next = R_READ;
+    end
+    {IDLE, 2'b10} : begin
+      out_valid = 0;
+      out_left = 0;
+      out_right = 0;
+      next_val = {input_buffer[30:0], SD};
+      next = L_READ;
+    end
+    {L_READ, 2'b0?} : begin
+      out_valid = 0;
+      out_left = 0;
+      out_right = 0;
+      next_val = input_buffer;
+      next = L_OUT;
+    end
+    {L_READ, 2'b11} : begin
+      out_valid = 0;
+      out_left = 0;
+      out_right = 0;
+      next_val = input_buffer;
+      next = L_OUT;
+    end
+    {L_READ, 2'b10} : begin
+      out_valid = 0;
+      out_left = 0;
+      out_right = 0;
+      next_val = {input_buffer[30:0], SD};
+      next = L_READ;
+    end
+    {R_READ, 2'b0?} : begin
+      out_valid = 0;
+      out_left = 0;
+      out_right = 0;
+      next_val = input_buffer;
+      next = R_OUT;
+    end
+    {R_READ, 2'b11} : begin
+      out_valid = 0;
+      out_left = 0;
+      out_right = 0;
+      next_val = {input_buffer[30:0], SD};
+      next = R_READ;
+    end
+    {R_READ, 2'b10} : begin
+      out_valid = 0;
+      out_left = 0;
+      out_right = 0;
+      next_val = input_buffer;
+      next = R_OUT;
+    end
+    {L_OUT, 2'b0?} : begin
+      out_valid = 1;
+      out_left = input_buffer;
+      out_right = 0;
+      next_val = 0;
+      next = IDLE;
+    end
+    {L_OUT, 2'b1?} : begin
+      out_valid = 1;
+      out_left = input_buffer;
+      out_right = 0;
+      next_val = {30'd0, SD_buffer, SD};
+      next = R_READ;
+    end
+    {R_OUT, 2'b0?} : begin
+      out_valid = 1;
+      out_left = 0;
+      out_right = input_buffer;
+      next_val = 0;
+      next = IDLE;
+    end
+    {R_OUT, 2'b1?} : begin
+      out_valid = 1;
+      out_left = 0;
+      out_right = input_buffer;
+      next_val = {30'd0, SD_buffer, SD};
+      next = L_READ;
+    end
+
+    default: begin
+      out_valid = 1'bx;
+      out_left = 32'bx;
+      out_right = 32'bx;
+      next = 3'bx;
+      next_val = 32'bx;
+    end
+
+  endcase
+
+end
+
+always_ff @(posedge clk, negedge rst_n) begin : seq_block
+  if(!rst_n)begin
+    input_buffer <= 0;
+    state <= IDLE;
+    SD_buffer <= 0;
+  end
+  else begin
+    state <= next;
+    // dealing with input_buffer
+    input_buffer <= next_val;
+    SD_buffer <= next_SD_buffer;
+  end
+end
+
+endmodule
